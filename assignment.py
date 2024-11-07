@@ -120,53 +120,9 @@ def clean_data(file_path):
     #    "Multiplex": 1
     #}).limit(5)
 
-def plot_data(merged_data):
-    # Assume merged_data is already cleaned and ready for plotting
-    filtered_data = merged_data[merged_data['Multiplex'].isin(['C18A', 'C18F', 'C188'])]
-    
-    # Your graphing code goes here, for example:
-    fig, axes = plt.subplots(3, 2, figsize=(15, 12))  # Adjust grid layout to 3 rows, 2 columns
-    
-    multiplexes = ['C18A', 'C18F', 'C188']
-    
-    # Scatter Plot for Freq vs Site Height
-    for i, multiplex in enumerate(multiplexes):
-        ax = axes[i, 0]
-        subset = filtered_data[filtered_data[multiplex] == 'Yes']
-        ax.scatter(subset['Freq.'], subset['Site Height'], label=f'{multiplex} - Freq vs Site Height', alpha=0.7)
-        ax.set_title(f'{multiplex} - Freq vs Site Height')
-        ax.set_xlabel('Frequency (Freq)')
-        ax.set_ylabel('Site Height')
-        ax.legend()
-    
-    # Bar Plots for Service Labels (Serv Label1 to Serv Label10)
-    for i, multiplex in enumerate(multiplexes):
-        ax = axes[i, 1]
-        subset = filtered_data[filtered_data[multiplex] == 'Yes']
-        
-        # Prepare a list of all service label columns
-        service_labels = ['Serv Label1', 'Serv Label2', 'Serv Label3', 'Serv Label4', 'Serv Label10']
-        
-        # For each service label column, plot a bar chart showing counts of each service label
-        label_counts = {label: subset[label].value_counts() for label in service_labels if label in subset.columns}
-        
-        # Create a bar plot for each service label
-        for label, counts in label_counts.items():
-            ax.bar(counts.index, counts.values, label=label, alpha=0.7)
-
-        ax.set_title(f'{multiplex} - Service Labels')
-        ax.set_xlabel('Service Label')
-        ax.set_ylabel('Count')
-        ax.legend()
-
-    # Show the final plot with all subplots
-    plt.tight_layout()
-    plt.show()
-
 file_path = {
     "Antenna": "TxAntennaDAB.csv",
     "Params": "TxParamsDAB.csv"
 }
 
 cleaned_data = clean_data(file_path)
-plot_data(cleaned_data)
