@@ -16,6 +16,8 @@ def clean_data(file_path):
     #merging on the first ID column as they share the same ID
     merged_data = pd.merge(data1, data2, on='id', how='outer')
 
+    #Changing 'Freq.' to 'Freq' as the former was causing issues.
+    merged_data.rename(columns={"Freq.": "Freq"}, inplace=True)
     # Task 1
     exclude_these_values = ['NZ02553847', 'SE213515', 'NT05399374', 'NT252675908']
     merged_data = merged_data[~merged_data['NGR'].isin(exclude_these_values)]
@@ -120,9 +122,117 @@ def clean_data(file_path):
     #    "Multiplex": 1
     #}).limit(5)
 
+def visualize_multiplex_data():
+    # Connect to MongoDB
+    client = MongoClient("mongodb://localhost:27017/") 
+    db = client['dab_database']
+    collection = db['dab_data']
+    
+    # Query data for the relevant multiplexes: C18A, C18F, C188
+    query = {
+        "$or": [
+            { "C18A": "Yes" },
+            { "C18F": "Yes" },
+            { "C188": "Yes" }
+        ]
+    }
+    
+    # Retrieve the necessary fields
+    projection = {
+        "Site": 1, 
+        "Freq": 1,
+        "Block": 1,
+        "Serv Label1": 1,
+        "Serv Label2": 1,
+        "Serv Label3": 1,
+        "Serv Label4": 1,
+        "Serv Label10": 1,
+        "Multiplex": 1
+    }
+    
+    data = collection.find(query, projection)
+    
+    # Convert MongoDB cursor to pandas DataFrame
+    df = pd.DataFrame(list(data))
+    
+    # Drop rows with missing multiplex or service labels
+    df.dropna(subset=["Multiplex"], inplace=True)
+    
+    print("Columns in DataFrame:", df.columns)
+    # Plot the data
+    plot_data(df)
+    
+def plot_data(df):
+    # Clean data for plotting
+    multiplexes = ['C18A', 'C18F', 'C188']
+    
+    # 1. Number of Sites per Multiplex - Bar Plot
+    multiplex_site_count = df.groupby('Multiplex')['Site'].nunique()  # Count unique sites for each multiplex
+    plt.figure(figsize=(8, 6))
+    multiplex_site_count.plot(kind='bar', color='lightgreen')
+    plt.title('Number of Sites per Multiplex')
+    plt.xlabel('Multiplex')
+    plt.ylabel('Unique Site Count')
+    plt.xticks(rotation=0)
+    plt.show()
+    
+    # 2. Frequency per Multiplex - Bar Plot
+    multiplex_freq = df.groupby('Multiplex')['Freq'].first()  # Assuming the frequency is the same per multiplex
+    plt.figure(figsize=(8, 6))
+    multiplex_freq.plot(kind='bar', color='salmon')
+    plt.title('Frequency per Multiplex')
+    plt.xlabel('Multiplex')
+    plt.ylabel('Frequency (MHz)')
+    plt.xticks(rotation=0)
+    plt.show()
+    
+    # 3. Number of Blocks per Multiplex - Bar Plot
+    multiplex_block_count = df.groupby('Multiplex')['Block'].nunique()  # Count unique blocks for each multiplex
+    plt.figure(figsize=(8, 6))
+    multiplex_block_count.plot(kind='bar', color='lightblue')
+    plt.title('Number of Blocks per Multiplex')
+    plt.xlabel('Multiplex')
+    plt.ylabel('Unique Block Count')
+    plt.xticks(rotation=0)
+    plt.show()
+
+    # 4. Service Label Distribution across Multiplexes - Stacked Bar Plot
+    # Prepare a dictionary to store the count of each service label per multiplex
+    service_labels = ['Serv Label1', 'Serv Label2', 'Serv Label3', 'Serv Label4', 'Serv Label10']
+
+    # Prepare a dictionary to store the count of each service label per multiplex
+    service_label_counts = {label: [] for label in service_labels}
+
+    # For each multiplex, count how many of each service label appear
+    for multiplex in multiplexes:
+        multiplex_data = df[df['Multiplex'] == multiplex]
+        for label in service_labels:
+            # Count occurrences of each service label in the multiplex
+            label_count = multiplex_data[label].notna().sum()  # Count non-null values for each label
+            service_label_counts[label].append(label_count)
+    
+    # Convert the counts dictionary to a DataFrame for easy plotting
+    service_label_counts_df = pd.DataFrame(service_label_counts, index=multiplexes)
+    
+    # Plot the data: Stack the bars to show counts of each service label in each multiplex
+    service_label_counts_df.plot(kind='bar', stacked=True, figsize=(10, 6), color=sns.color_palette("Set2"))
+    
+    # Customizing the plot
+    plt.title('Service Label Distribution across Multiplexes')
+    plt.xlabel('Multiplex')
+    plt.ylabel('Count of Service Labels')
+    plt.xticks(rotation=0)
+    plt.tight_layout()
+    plt.legend(title='Service Labels', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.show()
+
+
+
 file_path = {
     "Antenna": "TxAntennaDAB.csv",
     "Params": "TxParamsDAB.csv"
 }
 
 cleaned_data = clean_data(file_path)
+
+visualize_multiplex_data()
