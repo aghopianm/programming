@@ -3,7 +3,8 @@ import pymongo
 from pymongo import MongoClient
 import json
 from statistics import mode
-from tkinter import messagebox, Tk, Button
+import tkinter as tk
+from tkinter import messagebox, Tk, Button, filedialog
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -124,12 +125,13 @@ def printStats(merged_data):
     print(f"Mode of 'Power (kW)': {mode_calculation}")
     print(f"Median of 'Power (kW)': {median_calculation}")
 
-    # Save to JSON for future readability, it's better only printing to terminal in my opinion.
+    # Save to JSON for future readability, it's better to save for future use than just to print
+    #to terminal
     with open("numerical_statistics_for_power.json", "w") as file:
         json.dump(stats_results, file, indent=4)
 
 def visualize_multiplex_data():
-    # Connect to MongoDB
+    # we need to connect to the database as we will be querying it for the multiplexes.
     client = MongoClient("mongodb://localhost:27017/") 
     db = client['dab_database']
     collection = db['dab_data']
@@ -138,8 +140,8 @@ def visualize_multiplex_data():
 
     query = {"Multiplex": {"$in": multiplexes}}
     
-    # Retrieve the necessary fields
-    projection = {
+    # Retrieve the necessary fields as per the client requirement.
+    fields = {
         "Site": 1, 
         "Freq": 1,
         "Block": 1,
@@ -151,23 +153,26 @@ def visualize_multiplex_data():
         "Multiplex": 1
     }
     
-    data = collection.find(query, projection)
+    data = collection.find(query, fields)
     
     # Convert MongoDB cursor to pandas DataFrame
     df = pd.DataFrame(list(data))
     
-    # Drop rows with missing multiplex or service labels
+    # Drop rows with missing multiplex or service labels to avoid errors.
     df.dropna(subset=["Multiplex"], inplace=True)
     
     # Plot the data
-    plot_data(df)
+    data_displayer(df)
     
-def plot_data(df):
+def data_displayer(df):
     
+    #We need to print a few graphs here, I am going to group the service labels but keep
+    #the rest of them seperate.
+
     # 1. Number of Sites per Multiplex - Bar Plot
     multiplex_site_count = df.groupby('Multiplex')['Site'].nunique()  # Count unique sites for each multiplex
     plt.figure(figsize=(8, 6))
-    multiplex_site_count.plot(kind='bar', color='lightgreen')
+    multiplex_site_count.plot(kind='bar', color='red')
     plt.title('Number of Sites per Multiplex')
     plt.xlabel('Multiplex')
     plt.ylabel('Unique Site Count')
@@ -176,18 +181,18 @@ def plot_data(df):
     
     # 2. Frequency per Multiplex - Bar Plot
     multiplex_freq = df.groupby('Multiplex')['Freq'].first()  # Assuming the frequency is the same per multiplex
-    plt.figure(figsize=(8, 6))
-    multiplex_freq.plot(kind='bar', color='salmon')
+    multiplex_freq.plot(kind='bar', color='blue')
     plt.title('Frequency per Multiplex')
     plt.xlabel('Multiplex')
     plt.ylabel('Frequency (MHz)')
     plt.xticks(rotation=0)
     plt.show()
     
-    # 3. Number of Blocks per Multiplex - Bar Plot
+    # 3. Number of Blocks per Multiplex - Bar Plot - There are no unique Blocks it is always
+    # "12B"
     multiplex_block_count = df.groupby('Multiplex')['Block'].nunique()  # Count unique blocks for each multiplex
     plt.figure(figsize=(8, 6))
-    multiplex_block_count.plot(kind='bar', color='lightblue')
+    multiplex_block_count.plot(kind='bar', color='orange')
     plt.title('Number of Blocks per Multiplex')
     plt.xlabel('Multiplex')
     plt.ylabel('Unique Block Count')
@@ -196,6 +201,7 @@ def plot_data(df):
 
     # 4. Service Label Distribution across Multiplexes - Stacked Bar Plot
     # Prepare a dictionary to store the count of each service label per multiplex
+    #as I am going to be plotting the counts
     service_labels = ['Serv Label1', 'Serv Label2', 'Serv Label3', 'Serv Label4', 'Serv Label10']
 
     # Prepare a dictionary to store the count of each service label per multiplex
@@ -206,17 +212,18 @@ def plot_data(df):
         multiplex_data = df[df['Multiplex'] == multiplex]
         for label in service_labels:
             # Count occurrences of each service label in the multiplex
-            label_count = multiplex_data[label].notna().sum()  # Count non-null values for each label
+            # Count non-null values for each label, i am not counting null values to avoid errors.
+            label_count = multiplex_data[label].notna().sum()  
             service_label_counts[label].append(label_count)
     
-    # Convert the counts dictionary to a DataFrame for easy plotting
+    # Convert the counts dictionary to a DataFrame so I can pot without errors.
     service_label_counts_df = pd.DataFrame(service_label_counts, index=multiplexes)
     
      # Get a color palette with the same number of colors as there are service labels
     colors = sns.color_palette("Set2", n_colors=len(service_labels))
     
     # Plot the data: Stack the bars to show counts of each service label in each multiplex
-    ax = service_label_counts_df.plot(kind='bar', stacked=True, figsize=(10, 6), color=colors)
+    x = service_label_counts_df.plot(kind='bar', stacked=True, figsize=(10, 6), color=colors)
     
     # Customizing the plot
     plt.title('Service Label Distribution across Multiplexes')
@@ -224,16 +231,15 @@ def plot_data(df):
     plt.ylabel('Count of Service Labels')
     plt.xticks(rotation=0)
     # Ensure the legend has the correct colors and labels
-    # `handles` are the plotted bars, `labels` are the service label names
-    handles, labels = ax.get_legend_handles_labels()
+    # handles are the plotted bars and labels are the service label names
+    handles, labels = x.get_legend_handles_labels()
     
     # Set the correct labels for the legend
-    ax.legend(handles=handles, labels=service_labels, title='Service Labels', bbox_to_anchor=(1.05, 1), loc='upper left')
+    x.legend(handles=handles, labels=service_labels, title='Service Labels', bbox_to_anchor=(1.05, 1), loc='upper left')
     
-    # Adjust layout to avoid clipping the legend
-    plt.tight_layout()  # Ensure the layout is tight for better display
+    # Ensure the layout is tight for better display
+    plt.tight_layout() 
     
-    # Display the plot
     plt.show()
 
 # Task 5- HUGE TASK
@@ -245,7 +251,6 @@ def preprocess_data(df):
     df['Block'] = pd.to_numeric(df['Block'], errors='coerce')
      # Remove any leading or trailing spaces from column names as this was casuing errors.
     df.columns = df.columns.str.strip() 
-    
 
     # Encode service labels as binary (1 for non-null, 0 for null)
     service_labels = ['Serv Label1', 'Serv Label2', 'Serv Label3', 'Serv Label4', 'Serv Label10']
@@ -271,6 +276,8 @@ def plot_correlation_heatmap(correlation_matrix):
     plt.figure(figsize=(10, 8))
     sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
     plt.title("Correlation Heatmap of Frequency, Block, and Service Labels")
+    #It is worth noting that Block will be empty here, Block returns 12B throughout
+    #The entire dataset, and so in my opinion is slightly pointless here to even pot.
     plt.show()
 
 # Function to analyze correlation between columns
@@ -284,13 +291,94 @@ def analyze_correlation(df):
     # Visualize the correlation using a heatmap
     plot_correlation_heatmap(correlation_matrix)
 
+# Tkinter GUI Class
+class DABDataGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("DAB Data Interface")
+        self.file_path = {"Antenna": "", "Params": ""}
+        self.cleaned_data = None
+        
+        # Load, Clean, and Save Dataset
+        tk.Button(root, text="Load Antenna CSV", command=self.load_antenna).pack(pady=5)
+        tk.Button(root, text="Load Params CSV", command=self.load_params).pack(pady=5)
+        tk.Button(root, text="Clean and Merge Data", command=self.clean_and_merge_data).pack(pady=5)
+        tk.Button(root, text="Save Cleaned Data", command=self.save_cleaned_data).pack(pady=5)
+        tk.Button(root, text="Load Prepared Data", command=self.load_prepared_data).pack(pady=5)
+        # Display Stats
+        tk.Button(root, text="Display Power Statistics", command=self.display_stats).pack(pady=10)
+        
+        # Visualization and Analysis
+        tk.Button(root, text="Visualize Multiplex Data", command=visualize_multiplex_data).pack(pady=5)
+        tk.Button(root, text="Analyze Correlations", command=self.analyze_correlations).pack(pady=5)
 
-file_path = {
+    def load_antenna(self):
+        self.file_path["Antenna"] = filedialog.askopenfilename(title="Select Antenna CSV File")
+        messagebox.showinfo("File Loaded", f"Antenna CSV loaded: {self.file_path['Antenna']}")
+
+    def load_params(self):
+        self.file_path["Params"] = filedialog.askopenfilename(title="Select Params CSV File")
+        messagebox.showinfo("File Loaded", f"Params CSV loaded: {self.file_path['Params']}")
+
+    def clean_and_merge_data(self):
+        if not self.file_path["Antenna"] or not self.file_path["Params"]:
+            messagebox.showwarning("Missing Files", "Please load both Antenna and Params CSV files.")
+            return
+        self.cleaned_data = clean_data(self.file_path)
+        messagebox.showinfo("Data Cleaned", "Data has been cleaned and merged successfully.")
+
+    def load_prepared_data(self):
+        file_path = filedialog.askopenfilename(
+            title="Select Prepared Data JSON File",
+            filetypes=[("JSON files", "*.json")]
+        )
+        if file_path:  # Proceed only if a file is selected
+            try:
+                # Load the JSON file into a DataFrame
+                with open(file_path, "r") as file:
+                    data = json.load(file)
+                self.cleaned_data = pd.DataFrame(data)
+                messagebox.showinfo("Data Load", f"Prepared data successfully loaded from: {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"An error occurred: {str(e)}")
+        else:
+            messagebox.showwarning("File Selection", "No file selected.")
+            
+    def save_cleaned_data(self):
+        if self.cleaned_data is not None:
+            save_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON files", "*.json")])
+            if save_path:
+                self.cleaned_data.to_json(save_path, orient='records', indent=4)
+                messagebox.showinfo("Data Saved", f"Data saved to: {save_path}")
+        else:
+            messagebox.showwarning("Data Not Cleaned", "Please clean and merge data first.")
+
+    def display_stats(self):
+        if self.cleaned_data is not None:
+            printStats(self.cleaned_data)
+            messagebox.showinfo("Stats Displayed", "Power statistics have been displayed in the console.")
+        else:
+            messagebox.showwarning("Data Not Available", "Please clean and merge data first.")
+
+    def analyze_correlations(self):
+        if self.cleaned_data is not None:
+            analyze_correlation(self.cleaned_data)
+        else:
+            messagebox.showwarning("Data Not Available", "Please clean and merge data first.")
+        
+
+#Keeping the code here, this is for a console only based, no GUI application:
+"""file_path = {
     "Antenna": "TxAntennaDAB.csv",
     "Params": "TxParamsDAB.csv"
 }
-
-cleaned_data = clean_data(file_path)
+"""
+"""cleaned_data = clean_data(file_path)
 printStats(cleaned_data)
 visualize_multiplex_data()
-analyze_correlation(cleaned_data)
+analyze_correlation(cleaned_data)"""
+
+# Running the GUI Application
+root = tk.Tk()
+app = DABDataGUI(root)
+root.mainloop()
